@@ -60,8 +60,8 @@ col_classes <- c('VendorID' = "factor",
 file_name <- "yellow_tripsample_2016-01.csv"
 
 #read only top 1000 rows and columns in col_classes
-sample_df <- read.csv(file_name, nrows = 1000, colClasses = col_classes)
-head(nyc_sample_df)
+sample_df <- read.csv(file_name, nrows = 1000)
+head(sample_df)
 
 #Reading whole data and creating XDF(ondisk data frames that is uniquely understood by R)
 input_xdf <- 'yellow_tripdata_2016.xdf'
@@ -88,9 +88,49 @@ rxsum_xdf <- rxSummary( ~ fare_amount, nyc_xdf) # provide statistical summaries 
 rxsum_xdf
 
 #CSV
-input_csv <- 'yellow_tripdata_2016-01.csv' # we can only use one month's data unless we join the CSVs
+input_csv <- 'yellow_tripsample_2016-01.csv' # we can only use one month's data unless we join the CSVs
 nyc_csv <- RxTextData(input_csv, colClasses = col_classes) # point to CSV file and provide column info
 system.time(
   rxsum_csv <- rxSummary( ~ fare_amount, nyc_csv) # provide statistical summaries for fare amount
 )
 rxsum_csv
+
+# Checking column types
+rxGetInfo(nyc_xdf, getVarInfo = TRUE, numRows = 5) # show column types and the first 10 rows
+
+# Data Transformations
+rxDataStep(nyc_xdf, nyc_xdf, 
+           transforms = list(trip_percent = ifelse(fare_amount > 0 & 
+            tip_amount < fare_amount, round(tip_amount * 100 / fare_amount ,0), NA)),
+           overwrite = TRUE)
+rxSummary(~ trip_percent, nyc_xdf)
+
+rxSummary(~trip_percent2, nyc_xdf, 
+          transforms = list(trip_percent2 = ifelse(fare_amount > 0 &
+           tip_amount < fare_amount, round(tip_amount * 100/ fare_amount, 0), NA)))
+
+rxCrossTabs(~ month:year, nyc_xdf, 
+            transforms = list(year = ifelse(
+                    !is.na(as.integer(substr(tpep_pickup_datetime, 5, 8))),
+                      as.integer(substr(tpep_pickup_datetime, 5, 8)),
+                      as.integer(substr(tpep_pickup_datetime, 6, 9))),
+              month = as.integer(substr(tpep_pickup_datetime, 1,1)),
+              year = factor(year, levels = 2014:2016),
+              month = factor(month, levels = 1:12)))
+
+rxCrossTabs(~ month, nyc_xdf, 
+            transforms = list(
+              month = as.integer(substr(tpep_pickup_datetime, 1,2)),
+              month = factor(month, levels = 1:12)))
+
+rxCrossTabs(~ year, nyc_xdf, 
+            transforms = list(
+              year = as.integer(substr(tpep_pickup_datetime, 5,8)),
+              year = factor(year, levels = 1:12)))
+
+rxCrossTabs( ~ month:year, nyc_xdf, 
+              transforms = list(
+                date = mdy_hm(tpep_pickup_datetime), 
+                year = factor(year(date), levels = 2014:2016), 
+                month = factor(month(date), levels = 1:12)), 
+              transformPackages = "lubridate")
